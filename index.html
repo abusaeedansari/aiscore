@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Live Scoreboard</title>
+  
+  <!-- Roboto Mono Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  
+  <!-- Papa Parse for CSV export -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  
+  <style>
+    :root {
+      /* Black-and-white theme */
+      --bg-main: #000;
+      --table-bg: #111;
+      --header-bg: #000;
+      --container-bg: #111;
+      --text-color: #fff;
+      --border-color: #444;
+      --hover-color: rgba(255, 255, 255, 0.1);
+      --radius-default: 8px;
+      --btn-bg: #444;
+      --btn-text: #fff;
+      --box-shadow: rgba(0, 0, 0, 0.5);
+    
+      --highlight-day: #fff799;   /* Day highlight */
+      --highlight-night: #6684ff; /* Night highlight */
+      --delete-bg: #ff9999;       /* Soft red */
+    
+      /* Highlight Score Column */
+      --score-bg: #555;
+      --score-text: #fff;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      margin: 0; 
+      padding: 0;
+      min-height: 100vh;
+      background: var(--bg-main);
+      font-family: "Roboto Mono", monospace;
+      color: var(--text-color);
+      display: flex; 
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    header {
+      width: 100%;
+      background: var(--header-bg);
+      box-shadow: 0 4px 10px var(--box-shadow);
+      position: sticky; 
+      top: 0; 
+      z-index: 1000;
+    }
+    header .header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; 
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      font-weight: 700; 
+      font-size: 1.6rem;
+      margin: 0;
+      color: var(--text-color);
+    }
+    header button {
+      background: var(--btn-bg); 
+      color: var(--btn-text);
+      border: none;
+      border-radius: var(--radius-default);
+      font-size: 0.9rem;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+    header button:hover {
+      background: #666;
+      transform: scale(1.05);
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 1.5rem auto;
+      padding: 1.5rem;
+      background: var(--container-bg);
+      box-shadow: 0 4px 10px var(--box-shadow);
+      border-radius: var(--radius-default);
+    }
+    
+    .filters-and-sorts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .filters-and-sorts > div {
+      display: flex; 
+      align-items: center; 
+      gap: 0.5rem;
+    }
+    .filters-and-sorts label {
+      font-weight: 600;
+      color: var(--text-color);
+    }
+    .filters-and-sorts select {
+      background: #000;
+      color: #fff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-default);
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border 0.3s;
+    }
+    .filters-and-sorts select:focus {
+      border: 1px solid #fff;
+    }
+    .loading-indicator {
+      margin-left: auto;
+      font-size: 0.9rem;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      color: #ffd74f;
+    }
+    
+    .tables-wrapper {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+      padding: 1rem;
+    }
+    @media (min-width: 992px) {
+      .tables-wrapper {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    
+    .scoreboard-block {
+      background: var(--table-bg);
+      border-radius: var(--radius-default);
+      overflow: hidden;
+     
+      box-shadow: 0 2px 6px var(--box-shadow);
+      min-width: 0;
+      position: relative;
+    }
+    .scoreboard-block h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 600;
+      background: #000;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-color);
+    }
+    
+    .table-container {
+      overflow-x: auto; /* horizontal scroll if wide */
+      max-height: 400px; 
+      overflow-y: auto;
+      padding: 1rem;
+      position: relative;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+   
+      background: #111;
+      border-radius: var(--radius-default);
+      overflow: hidden;
+    }
+    th, td {
+      white-space: nowrap;
+      text-align: left;
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.9rem;
+      color: var(--text-color);
+    }
+    thead {
+      background: #000;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    tbody tr:hover {
+      background: var(--hover-color);
+    }
+    .ranking {
+      font-weight: 700;
+      color: #ffd74f;
+
+    }
+    
+    /* Highlight Score Column */
+    th:nth-child(6),
+    td:nth-child(6) {
+      
+        color: #ffd74f;
+      font-weight: 700;
+    }
+    
+    /* Day/Night Cells */
+    .dayCell {
+      background-color: var(--highlight-day); 
+      color: #000;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.85rem;
+      display: inline-block;
+    }
+    .nightCell {
+      background-color: var(--highlight-night); 
+      color: #fff;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.85rem;
+      display: inline-block;
+    }
+    
+    /* Fullscreen mode */
+    .scoreboard-block.fullscreen {
+      position: fixed; 
+      top: 0; 
+      left: 0;
+      width: 100vw; 
+      height: 100vh;
+      z-index: 9999;
+      margin: 0; 
+      border-radius: 0;
+      overflow: hidden; 
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      background: #000; /* Changed to #000 for fullscreen */
+      transition: all 0.3s ease-in-out;
+    }
+    .scoreboard-block.fullscreen h2 {
+      font-size: 1.8rem;
+      padding: 1rem 1.5rem;
+    }
+    .scoreboard-block.fullscreen .table-container {
+      max-height: none;
+      flex: 1; 
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+    .scoreboard-block.fullscreen table {
+      font-size: 1rem;
+    }
+    .closeFullscreenBtn {
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border: none;
+      outline: none;
+      border-radius: var(--radius-default);
+      font-size: 0.9rem;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      transition: background 0.3s, opacity 0.2s;
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      display: none;
+      z-index: 1001;
+    }
+    .closeFullscreenBtn.visible {
+      display: block;
+    }
+    .closeFullscreenBtn:hover {
+      background: #666;
+      opacity: 0.9;
+    }
+    
+    /* Clickable column headers for manual sorting */
+    .sortable-header {
+      cursor: pointer;
+      user-select: none;
+    
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sort-icon {
+      margin-left: 0.3rem;
+      font-size: 0.75rem;
+      opacity: 0.5;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    .sort-asc .sort-icon {
+      transform: rotate(180deg);
+      opacity: 1;
+    }
+    .sort-desc .sort-icon {
+      transform: rotate(0deg);
+      opacity: 1;
+    }
+    
+    /* Delete button */
+    .delete-btn {
+      background: var(--delete-bg);
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+      font-size: 0.9rem;
+    }
+    .delete-btn:hover {
+      background: #ff4c4c; 
+      transform: scale(1.05);
+    }
+    
+    footer {
+      margin-top: 2rem;
+      padding: 1rem 0;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #888;
+    }
+  </style>
+  
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>AI Live Scoreboard</h1>
+    <button id="exportCsvBtn">Export CSV</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Filter + sort options -->
+  <div class="filters-and-sorts">
+    <div>
+      <label for="sortSelect">Sort By:</label>
+      <select id="sortSelect">
+        <option value="latest">Latest Completion</option>
+        <option value="highestScore">Highest Score</option>
+        <option value="name">Name (A–Z)</option>
+      </select>
+    </div>
+    <div>
+      <label for="quizFilter">Filter Quiz:</label>
+      <select id="quizFilter">
+        <option value="">All Quizzes</option>
+      </select>
+    </div>
+    <span id="liveStatus" class="loading-indicator">Updating...</span>
+  </div>
+
+  <div class="tables-wrapper">
+
+    <!-- Recently Completed (last hour) -->
+    <div class="scoreboard-block" id="recentBlock">
+      <h2>
+        Recently Completed (Last Hour)
+        <button class="closeFullscreenBtn" id="closeFullscreenBtn">
+          Close Fullscreen
+        </button>
+        <button id="enterFullscreenBtn">
+          Fullscreen
+        </button>
+      </h2>
+      <div class="table-container">
+        <table id="recentTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable-header" data-table="recentTable" data-col="name">
+                Name <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="quiz">
+                Quiz <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="started">
+                Started <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="ended">
+                Last Answered <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="score">
+                Score <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="progress">
+                Progress <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="recentTable" data-col="date">
+                Date <span class="sort-icon">▲</span>
+              </th>
+              <th>Day/Night</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Results -->
+    <div class="scoreboard-block" id="allResultsBlock">
+      <h2>
+        All Results
+        <button class="closeFullscreenBtn" id="closeFullscreenAllBtn">
+          Close Fullscreen
+        </button>
+        <button id="enterFullscreenAllBtn">
+          Fullscreen
+        </button>
+      </h2>
+      <div class="table-container">
+        <table id="allResultsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="name">
+                Name <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="quiz">
+                Quiz <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="started">
+                Started <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="ended">
+                Last Answered <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="score">
+                Score <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="progress">
+                Progress <span class="sort-icon">▲</span>
+              </th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="date">
+                Date <span class="sort-icon">▲</span>
+              </th>
+              <th>Day/Night</th>
+              <th>Delete</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  © 2025 Your Organization. All rights reserved.
+</footer>
+
+<script>
+  /* ----------------------------------------------------
+     1) Initialize Firebase
+  -----------------------------------------------------*/
+  const firebaseConfig = {
+    apiKey: "AIzaSyB-RDLOoTlaio0VgtFh7eencMr9ekdFEEk",
+    authDomain: "test-app-1-6ade5.firebaseapp.com",
+    databaseURL: "https://test-app-1-6ade5-default-rtdb.firebaseio.com",
+    projectId: "test-app-1-6ade5",
+    storageBucket: "test-app-1-6ade5.firebasestorage.app",
+    messagingSenderId: "938447574937",
+    appId: "1:938447574937:web:65c1c53a12c665988b2508",
+    measurementId: "G-FKNLFZH4G9"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  
+  /* Global data & states */
+  let allResults = [];
+  let updatingTimeout = null;
+  
+  /* By default, sort by "ended" desc (latest first) for both tables */
+  let globalCurrentSort = {
+    recentTable: { col: "ended", dir: "desc" },
+    allResultsTable: { col: "ended", dir: "desc" }
+  };
+  let usingManualSort = {
+    recentTable: false,
+    allResultsTable: false
+  };
+  
+  /* Listen to "ai-results/ai1" for changes */
+  db.ref("ai-results/ai1").on("value", snapshot => {
+    showUpdatingIndicator();
+    if(!snapshot.exists()) {
+      allResults = [];
+      refreshDisplays();
+      return;
+    }
+    const raw = snapshot.val();
+    const arr = [];
+    const quizSet = new Set();
+  
+    for(let key in raw) {
+      const r = raw[key];
+      r._key = key;
+      // unify finalScore if present, otherwise use r.score
+      // unify lastAnswered as the "end time"
+      r._endTimeISO = r.lastAnswered || "";
+      r._endTimestamp = new Date(r._endTimeISO).getTime() || 0;
+      // also keep startTimestamp
+      r._startTimestamp = (r.timeStarted) ? new Date(r.timeStarted).getTime() : 0;
+  
+      // track quiz
+      if(r.quiz) quizSet.add(r.quiz);
+      arr.push(r);
+    }
+    allResults = arr;
+    populateQuizOptions([...quizSet]);
+    refreshDisplays();
+  });
+  
+  function populateQuizOptions(quizList) {
+    const quizFilter = document.getElementById("quizFilter");
+    // clear extra options
+    while(quizFilter.options.length > 1){
+      quizFilter.remove(1);
+    }
+    quizList.sort().forEach(q => {
+      const opt = document.createElement("option");
+      opt.value = q;
+      opt.textContent = q;
+      quizFilter.appendChild(opt);
+    });
+  }
+  
+  /* Filter & sort on user changes */
+  document.getElementById("sortSelect").addEventListener("change", () => {
+    // reset manual column sorting
+    usingManualSort.recentTable = false;
+    usingManualSort.allResultsTable = false;
+    refreshDisplays();
+  });
+  document.getElementById("quizFilter").addEventListener("change", refreshDisplays);
+  
+  function refreshDisplays() {
+    const sortMethod = document.getElementById("sortSelect").value;
+    const quizName = document.getElementById("quizFilter").value;
+  
+    // filter by quiz
+    const filtered = quizName 
+      ? allResults.filter(r => (r.quiz === quizName))
+      : allResults.slice();
+  
+    // primary sort from dropdown
+    let sortedData = sortResults(filtered, sortMethod);
+  
+    // if the user has sorted by clicking table columns, override with that
+    let finalAll = sortedData;
+    if(usingManualSort.allResultsTable) {
+      const col = globalCurrentSort.allResultsTable.col;
+      const dir = globalCurrentSort.allResultsTable.dir;
+      finalAll = sortTableData(filtered, "allResultsTable", col, dir);
+    }
+  
+    // "Recently Completed" = last 1 hour
+    let finalRecent = sortedData.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
+    if(usingManualSort.recentTable) {
+      let recentFiltered = filtered.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
+      const col = globalCurrentSort.recentTable.col;
+      const dir = globalCurrentSort.recentTable.dir;
+      finalRecent = sortTableData(recentFiltered, "recentTable", col, dir);
+    }
+  
+    renderTable("recentTable", finalRecent);
+    renderTable("allResultsTable", finalAll);
+  }
+  
+  /* Dropdown sorts: "latest", "highestScore", "name" */
+  function sortResults(dataArr, method) {
+    const arr = [...dataArr];
+    switch(method) {
+      case "latest":
+        // sort desc by endTimestamp
+        arr.sort((a,b) => b._endTimestamp - a._endTimestamp);
+        break;
+      case "highestScore":
+        arr.sort((a,b) => (b.score||0) - (a.score||0));
+        break;
+      case "name":
+        arr.sort((a,b) => {
+          const an = (a.name||"").toLowerCase();
+          const bn = (b.name||"").toLowerCase();
+          return an.localeCompare(bn);
+        });
+        break;
+    }
+    return arr;
+  }
+  
+  /* Manual column sorts */
+  function sortTableData(dataArr, tableId, col, dir) {
+    const arr = [...dataArr];
+    arr.sort((a,b) => {
+      let valA, valB;
+      if(col === "name"){
+        valA = (a.name||"").toLowerCase();
+        valB = (b.name||"").toLowerCase();
+      } else if(col === "quiz"){
+        valA = (a.quiz||"").toLowerCase();
+        valB = (b.quiz||"").toLowerCase();
+      } else if(col === "started"){
+        valA = a._startTimestamp;
+        valB = b._startTimestamp;
+      } else if(col === "ended"){
+        valA = a._endTimestamp;
+        valB = b._endTimestamp;
+      } else if(col === "score"){
+        valA = parseInt(a.score||0);
+        valB = parseInt(b.score||0);
+      } else if(col === "progress"){
+        let ratioA = (a.questionsCompleted||0)/(a.totalQuestions||1);
+        let ratioB = (b.questionsCompleted||0)/(b.totalQuestions||1);
+        valA = ratioA;
+        valB = ratioB;
+      } else if(col === "date"){
+        // date is from start or end?
+        // we'll just compare whichever is nonzero
+        valA = a._startTimestamp || a._endTimestamp;
+        valB = b._startTimestamp || b._endTimestamp;
+      } else {
+        // # or unknown
+        valA = "";
+        valB = "";
+      }
+      if(typeof valA === "string" && typeof valB === "string"){
+        return valA.localeCompare(valB);
+      }
+      return valA - valB;
+    });
+    if(dir === "desc") arr.reverse();
+    return arr;
+  }
+  
+  /* Render table rows */
+  function renderTable(tableId, dataArr) {
+    const tbody = document.querySelector(`#${tableId} tbody`);
+    tbody.innerHTML = "";
+    dataArr.forEach((item, idx) => {
+      const tr = document.createElement("tr");
+  
+      // finalScore overrides score if present
+      const displayedScore = (typeof item.finalScore !== "undefined")
+        ? item.finalScore
+        : (item.score || 0);
+  
+      // day/night from lastAnswered
+      const dayN = dayOrNight(item._endTimeISO);
+      const icon = (dayN === "night") ? "🌙" : "☀️";
+      const cellClass = (dayN === "night") ? "nightCell" : "dayCell";
+  
+      // progress
+      const prog = `${item.questionsCompleted||0}/${item.totalQuestions||0}`;
+  
+      // local date from timeStarted or lastAnswered
+      const dateISO = item.timeStarted || item._endTimeISO;
+      const formattedDate = formatLocalDate(dateISO);
+  
+      // create cells
+      // #, name, quiz, started, ended, score, progress, date, day/night, delete
+      let rowCells = [
+        createCell(idx+1, false, "ranking"),
+        createCell(item.name||""),
+        createCell(item.quiz||""),
+        createCell(formatLocalAmPm(item.timeStarted)),
+        createCell(formatLocalAmPm(item._endTimeISO)),
+        createCell(displayedScore),
+        createCell(prog),
+        createCell(formattedDate),
+        createCell(`<span class="${cellClass}">${icon}</span>`, true),
+        createDeleteCell(item._key)
+      ];
+      rowCells.forEach(td => tr.appendChild(td));
+  
+      tbody.appendChild(tr);
+    });
+  }
+  
+  /* Helper to create a cell (optionally HTML) */
+  function createCell(content, useHtml=false, extraClass="") {
+    const td = document.createElement("td");
+    if(extraClass) td.classList.add(extraClass);
+    if(useHtml) td.innerHTML = content;
+    else td.textContent = (content !== undefined ? content : "");
+    return td;
+  }
+  
+  /* Helper to create the Delete cell */
+  function createDeleteCell(key) {
+    const td = document.createElement("td");
+    const delBtn = document.createElement("button");
+    delBtn.className = "delete-btn";
+    delBtn.textContent = "Del";
+    delBtn.title = "Delete this entry";
+    delBtn.addEventListener("click", () => {
+      if(confirm("Are you sure you want to delete this entry?")){
+        db.ref(`ai-results/ai1/${key}`).remove()
+          .then(()=> console.log("Deleted record", key))
+          .catch(err => console.error("Error:", err));
+      }
+    });
+    td.appendChild(delBtn);
+    return td;
+  }
+  
+  /* Day or Night by hour */
+  function dayOrNight(isoString){
+    if(!isoString) return "day";
+    const d = new Date(isoString);
+    if(isNaN(d.getTime())) return "day";
+    const h = d.getHours();
+    return (h >= 18 || h < 6) ? "night" : "day";
+  }
+  
+  /* Format "22 Jan 25" */
+  function formatLocalDate(isoString){
+    if(!isoString) return "";
+    const d = new Date(isoString);
+    if(isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2,"0");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun",
+                    "Jul","Aug","Sep","Oct","Nov","Dec"];
+    const mon = months[d.getMonth()];
+    const yr = String(d.getFullYear()).slice(-2);
+    return `${day} ${mon} ${yr}`;
+  }
+  
+  /* Format "2:05 pm" */
+  function formatLocalAmPm(isoString) {
+    if(!isoString) return "";
+    const d = new Date(isoString);
+    if(isNaN(d.getTime())) return "";
+    let hh = d.getHours();
+    const mm = d.getMinutes();
+    const ampm = hh >= 12 ? "pm" : "am";
+    hh = hh % 12 || 12;
+    const hhStr = (hh<10 ? "0"+hh : hh);
+    const mmStr = (mm<10 ? "0"+mm : mm);
+    return `${hhStr}:${mmStr} ${ampm}`;
+  }
+  
+  /* Show quick "Updating..." indicator */
+  function showUpdatingIndicator(){
+    const indicator = document.getElementById("liveStatus");
+    indicator.style.opacity = 1;
+    clearTimeout(updatingTimeout);
+    updatingTimeout = setTimeout(() => {
+      indicator.style.opacity = 0;
+    }, 1000);
+  }
+  
+  /* CSV Export */
+  document.getElementById("exportCsvBtn").addEventListener("click", () => {
+    const sortMethod = document.getElementById("sortSelect").value;
+    const quizName = document.getElementById("quizFilter").value;
+    const filtered = quizName
+      ? allResults.filter(r => r.quiz === quizName)
+      : [...allResults];
+    const finalArr = sortResults(filtered, sortMethod); 
+    // if user manually sorted columns, we *could* also apply that logic, but 
+    // for CSV we'll just do the dropdown sort.
+  
+    // Build CSV row objects
+    const csvData = finalArr.map(r => ({
+      name: r.name || "",
+      quiz: r.quiz || "",
+      score: (typeof r.finalScore !== "undefined") ? r.finalScore : (r.score || 0),
+      questionsCompleted: r.questionsCompleted || 0,
+      totalQuestions: r.totalQuestions || 0,
+      timeStarted: r.timeStarted || "",
+      lastAnswered: r.lastAnswered || ""
+    }));
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download","ai1-scoreboard.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+  
+  /* Fullscreen toggles for each table */
+  const recentBlock = document.getElementById("recentBlock");
+  const enterFullscreenBtn = document.getElementById("enterFullscreenBtn");
+  const closeFullscreenBtn = document.getElementById("closeFullscreenBtn");
+  
+  enterFullscreenBtn.addEventListener("click", () => {
+    recentBlock.classList.add("fullscreen");
+    enterFullscreenBtn.style.display = "none";
+    closeFullscreenBtn.style.display = "block";
+  });
+  
+  closeFullscreenBtn.addEventListener("click", () => {
+    recentBlock.classList.remove("fullscreen");
+    closeFullscreenBtn.style.display = "none";
+    enterFullscreenBtn.style.display = "block";
+  });
+  
+  const allResultsBlock = document.getElementById("allResultsBlock");
+  const enterFullscreenAllBtn = document.getElementById("enterFullscreenAllBtn");
+  const closeFullscreenAllBtn = document.getElementById("closeFullscreenAllBtn");
+  
+  enterFullscreenAllBtn.addEventListener("click", () => {
+    allResultsBlock.classList.add("fullscreen");
+    enterFullscreenAllBtn.style.display = "none";
+    closeFullscreenAllBtn.style.display = "block";
+  });
+  
+  closeFullscreenAllBtn.addEventListener("click", () => {
+    allResultsBlock.classList.remove("fullscreen");
+    closeFullscreenAllBtn.style.display = "none";
+    enterFullscreenAllBtn.style.display = "block";
+  });
+  
+  /* Clickable column headers => sort each table */
+  document.querySelectorAll("th.sortable-header").forEach(th => {
+    th.addEventListener("click", () => {
+      const tableId = th.getAttribute("data-table"); // "recentTable" or "allResultsTable"
+      const col = th.getAttribute("data-col");
+      const currentCol = globalCurrentSort[tableId].col;
+      const currentDir = globalCurrentSort[tableId].dir;
+      let newDir = "asc";
+      if(col === currentCol && currentDir === "asc") {
+        newDir = "desc";
+      } else if(col === currentCol && currentDir === "desc") {
+        newDir = "asc";
+      }
+      globalCurrentSort[tableId].col = col;
+      globalCurrentSort[tableId].dir = newDir;
+      usingManualSort[tableId] = true;
+      refreshDisplays();
+      updateSortIcons(tableId, col, newDir);
+    });
+  });
+  
+  /* Indicate which column/direction is active */
+  function updateSortIcons(tableId, col, dir) {
+    document.querySelectorAll(`th.sortable-header[data-table="${tableId}"]`)
+      .forEach(th => th.classList.remove("sort-asc","sort-desc"));
+    const header = document.querySelector(`th.sortable-header[data-table="${tableId}"][data-col="${col}"]`);
+    if(header) {
+      header.classList.add( (dir==="asc") ? "sort-asc" : "sort-desc" );
+    }
+  }
+  
+  /* On DOM load, highlight the default sort icons */
+  document.addEventListener("DOMContentLoaded", () => {
+    updateSortIcons("recentTable", globalCurrentSort.recentTable.col, globalCurrentSort.recentTable.dir);
+    updateSortIcons("allResultsTable", globalCurrentSort.allResultsTable.col, globalCurrentSort.allResultsTable.dir);
+  });
+</script>
+</body>
+</html>
