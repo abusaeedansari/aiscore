@@ -35,7 +35,7 @@
       --highlight-night: #6684ff; /* Night highlight */
       --delete-bg: #ff9999;       /* Soft red */
     
-      /* Highlight Score Column */
+      /* Score Column highlight */
       --score-bg: #555;
       --score-text: #fff;
     }
@@ -76,7 +76,6 @@
       font-weight: 700; 
       font-size: 1.6rem;
       margin: 0;
-      color: var(--text-color);
     }
     header button {
       background: var(--btn-bg); 
@@ -118,7 +117,6 @@
     }
     .filters-and-sorts label {
       font-weight: 600;
-      color: var(--text-color);
     }
     .filters-and-sorts select {
       background: #000;
@@ -158,9 +156,7 @@
       background: var(--table-bg);
       border-radius: var(--radius-default);
       overflow: hidden;
-     
       box-shadow: 0 2px 6px var(--box-shadow);
-      min-width: 0;
       position: relative;
     }
     .scoreboard-block h2 {
@@ -173,7 +169,6 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      color: var(--text-color);
     }
     
     .table-container {
@@ -186,7 +181,6 @@
     table {
       border-collapse: collapse;
       width: 100%;
-   
       background: #111;
       border-radius: var(--radius-default);
       overflow: hidden;
@@ -197,7 +191,6 @@
       padding: 0.75rem;
       border-bottom: 1px solid var(--border-color);
       font-size: 0.9rem;
-      color: var(--text-color);
     }
     thead {
       background: #000;
@@ -211,14 +204,12 @@
     .ranking {
       font-weight: 700;
       color: #ffd74f;
-
     }
     
-    /* Highlight Score Column */
+    /* Score highlight column (the 6th column) */
     th:nth-child(6),
     td:nth-child(6) {
-      
-        color: #ffd74f;
+      color: #ffd74f;
       font-weight: 700;
     }
     
@@ -254,7 +245,7 @@
       padding: 2rem;
       display: flex;
       flex-direction: column;
-      background: #000; /* Changed to #000 for fullscreen */
+      background: #000;
       transition: all 0.3s ease-in-out;
     }
     .scoreboard-block.fullscreen h2 {
@@ -298,9 +289,6 @@
     .sortable-header {
       cursor: pointer;
       user-select: none;
-    
-      align-items: center;
-      justify-content: space-between;
     }
     .sort-icon {
       margin-left: 0.3rem;
@@ -353,7 +341,6 @@
 </header>
 
 <div class="container">
-
   <!-- Filter + sort options -->
   <div class="filters-and-sorts">
     <div>
@@ -374,17 +361,12 @@
   </div>
 
   <div class="tables-wrapper">
-
     <!-- Recently Completed (last hour) -->
     <div class="scoreboard-block" id="recentBlock">
       <h2>
         Recently Completed (Last Hour)
-        <button class="closeFullscreenBtn" id="closeFullscreenBtn">
-          Close Fullscreen
-        </button>
-        <button id="enterFullscreenBtn">
-          Fullscreen
-        </button>
+        <button class="closeFullscreenBtn" id="closeFullscreenBtn">Close Fullscreen</button>
+        <button id="enterFullscreenBtn">Fullscreen</button>
       </h2>
       <div class="table-container">
         <table id="recentTable">
@@ -425,12 +407,8 @@
     <div class="scoreboard-block" id="allResultsBlock">
       <h2>
         All Results
-        <button class="closeFullscreenBtn" id="closeFullscreenAllBtn">
-          Close Fullscreen
-        </button>
-        <button id="enterFullscreenAllBtn">
-          Fullscreen
-        </button>
+        <button class="closeFullscreenBtn" id="closeFullscreenAllBtn">Close Fullscreen</button>
+        <button id="enterFullscreenAllBtn">Fullscreen</button>
       </h2>
       <div class="table-container">
         <table id="allResultsTable">
@@ -466,7 +444,6 @@
         </table>
       </div>
     </div>
-
   </div>
 </div>
 
@@ -475,407 +452,471 @@
 </footer>
 
 <script>
-  /* ----------------------------------------------------
-     1) Initialize Firebase
-  -----------------------------------------------------*/
-  const firebaseConfig = {
-    apiKey: "AIzaSyB-RDLOoTlaio0VgtFh7eencMr9ekdFEEk",
-    authDomain: "test-app-1-6ade5.firebaseapp.com",
-    databaseURL: "https://test-app-1-6ade5-default-rtdb.firebaseio.com",
-    projectId: "test-app-1-6ade5",
-    storageBucket: "test-app-1-6ade5.firebasestorage.app",
-    messagingSenderId: "938447574937",
-    appId: "1:938447574937:web:65c1c53a12c665988b2508",
-    measurementId: "G-FKNLFZH4G9"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  
-  /* Global data & states */
-  let allResults = [];
-  let updatingTimeout = null;
-  
-  /* By default, sort by "ended" desc (latest first) for both tables */
-  let globalCurrentSort = {
-    recentTable: { col: "ended", dir: "desc" },
-    allResultsTable: { col: "ended", dir: "desc" }
-  };
-  let usingManualSort = {
-    recentTable: false,
-    allResultsTable: false
-  };
-  
-  /* Listen to "ai-results/ai1" for changes */
-  db.ref("ai-results/ai1").on("value", snapshot => {
-    showUpdatingIndicator();
-    if(!snapshot.exists()) {
-      allResults = [];
-      refreshDisplays();
-      return;
-    }
-    const raw = snapshot.val();
-    const arr = [];
-    const quizSet = new Set();
-  
-    for(let key in raw) {
-      const r = raw[key];
-      r._key = key;
-      // unify finalScore if present, otherwise use r.score
-      // unify lastAnswered as the "end time"
-      r._endTimeISO = r.lastAnswered || "";
-      r._endTimestamp = new Date(r._endTimeISO).getTime() || 0;
-      // also keep startTimestamp
-      r._startTimestamp = (r.timeStarted) ? new Date(r.timeStarted).getTime() : 0;
-  
-      // track quiz
-      if(r.quiz) quizSet.add(r.quiz);
-      arr.push(r);
-    }
-    allResults = arr;
-    populateQuizOptions([...quizSet]);
+/* -----------------------------------------
+   1) Initialize Firebase
+----------------------------------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyB-RDLOoTlaio0VgtFh7eencMr9ekdFEEk",
+  authDomain: "test-app-1-6ade5.firebaseapp.com",
+  databaseURL: "https://test-app-1-6ade5-default-rtdb.firebaseio.com",
+  projectId: "test-app-1-6ade5",
+  storageBucket: "test-app-1-6ade5.firebasestorage.app",
+  messagingSenderId: "938447574937",
+  appId: "1:938447574937:web:65c1c53a12c665988b2508",
+  measurementId: "G-FKNLFZH4G9"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* Global data & states */
+let allResults = [];
+let updatingTimeout = null;
+
+/* By default, sort by "ended" desc (latest first) for both tables */
+let globalCurrentSort = {
+  recentTable: { col: "ended", dir: "desc" },
+  allResultsTable: { col: "ended", dir: "desc" }
+};
+let usingManualSort = {
+  recentTable: false,
+  allResultsTable: false
+};
+
+/* -----------------------------------------
+   2) Listen to "ai-results" for changes
+   Pull data from each quiz child (ai1, ai2, etc.)
+----------------------------------------- */
+db.ref("ai-results").on("value", snapshot => {
+  showUpdatingIndicator();
+  if(!snapshot.exists()){
+    allResults = [];
     refreshDisplays();
-  });
-  
-  function populateQuizOptions(quizList) {
-    const quizFilter = document.getElementById("quizFilter");
-    // clear extra options
-    while(quizFilter.options.length > 1){
-      quizFilter.remove(1);
-    }
-    quizList.sort().forEach(q => {
-      const opt = document.createElement("option");
-      opt.value = q;
-      opt.textContent = q;
-      quizFilter.appendChild(opt);
-    });
+    return;
   }
   
-  /* Filter & sort on user changes */
-  document.getElementById("sortSelect").addEventListener("change", () => {
-    // reset manual column sorting
-    usingManualSort.recentTable = false;
-    usingManualSort.allResultsTable = false;
-    refreshDisplays();
+  let combined = [];
+  let quizSet = new Set();
+
+  // For each quiz child (e.g. "ai1", "ai2", etc.)
+  snapshot.forEach(quizSnap => {
+    const quizKey = quizSnap.key; // "ai1", "ai2", etc.
+    const quizData = quizSnap.val();
+    for(let recordKey in quizData){
+      const r = quizData[recordKey];
+      // Tag each record with unique quizKey & recordKey
+      r._quiz = quizKey;
+      r._key = recordKey;
+      
+      // If the record itself doesn't specify quiz, let's store it
+      if(!r.quiz) {
+        r.quiz = quizKey; 
+      }
+      quizSet.add(r.quiz);
+
+      // Normalize start/end times
+      const startISO = r.timeStarted || r.startTime || "";
+      const endISO   = r.lastAnswered || r.endTime   || "";
+      
+      // We'll store them in "_startTimestamp" / "_endTimestamp"
+      r._startTimeISO = startISO;
+      r._endTimeISO = endISO;
+      r._startTimestamp = startISO ? new Date(startISO).getTime() : 0;
+      r._endTimestamp   = endISO   ? new Date(endISO).getTime()   : 0;
+
+      // Store it
+      combined.push(r);
+    }
   });
-  document.getElementById("quizFilter").addEventListener("change", refreshDisplays);
-  
-  function refreshDisplays() {
-    const sortMethod = document.getElementById("sortSelect").value;
-    const quizName = document.getElementById("quizFilter").value;
-  
-    // filter by quiz
-    const filtered = quizName 
-      ? allResults.filter(r => (r.quiz === quizName))
-      : allResults.slice();
-  
-    // primary sort from dropdown
-    let sortedData = sortResults(filtered, sortMethod);
-  
-    // if the user has sorted by clicking table columns, override with that
-    let finalAll = sortedData;
-    if(usingManualSort.allResultsTable) {
-      const col = globalCurrentSort.allResultsTable.col;
-      const dir = globalCurrentSort.allResultsTable.dir;
-      finalAll = sortTableData(filtered, "allResultsTable", col, dir);
-    }
-  
-    // "Recently Completed" = last 1 hour
-    let finalRecent = sortedData.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
-    if(usingManualSort.recentTable) {
-      let recentFiltered = filtered.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
-      const col = globalCurrentSort.recentTable.col;
-      const dir = globalCurrentSort.recentTable.dir;
-      finalRecent = sortTableData(recentFiltered, "recentTable", col, dir);
-    }
-  
-    renderTable("recentTable", finalRecent);
-    renderTable("allResultsTable", finalAll);
+
+  allResults = combined;
+  populateQuizOptions([...quizSet]);
+  refreshDisplays();
+});
+
+/* Populate the Filter dropdown with all quiz names */
+function populateQuizOptions(quizList){
+  const quizFilter = document.getElementById("quizFilter");
+  // Clear out existing options beyond the default "All Quizzes"
+  while(quizFilter.options.length > 1){
+    quizFilter.remove(1);
   }
+  quizList.sort().forEach(q => {
+    const opt = document.createElement("option");
+    opt.value = q;
+    opt.textContent = q;
+    quizFilter.appendChild(opt);
+  });
+}
+
+/* Show quick "Updating..." indicator */
+function showUpdatingIndicator(){
+  const indicator = document.getElementById("liveStatus");
+  indicator.style.opacity = 1;
+  clearTimeout(updatingTimeout);
+  updatingTimeout = setTimeout(() => {
+    indicator.style.opacity = 0;
+  }, 1000);
+}
+
+/* -----------------------------------------
+   3) Filter & Sort changes
+----------------------------------------- */
+document.getElementById("sortSelect").addEventListener("change", () => {
+  // reset manual column sorting if user picks a new dropdown sort
+  usingManualSort.recentTable = false;
+  usingManualSort.allResultsTable = false;
+  refreshDisplays();
+});
+
+document.getElementById("quizFilter").addEventListener("change", refreshDisplays);
+
+function refreshDisplays(){
+  const sortMethod = document.getElementById("sortSelect").value;
+  const quizName = document.getElementById("quizFilter").value;
   
-  /* Dropdown sorts: "latest", "highestScore", "name" */
-  function sortResults(dataArr, method) {
-    const arr = [...dataArr];
-    switch(method) {
-      case "latest":
-        // sort desc by endTimestamp
-        arr.sort((a,b) => b._endTimestamp - a._endTimestamp);
-        break;
-      case "highestScore":
-        arr.sort((a,b) => (b.score||0) - (a.score||0));
-        break;
+  // Filter by quiz
+  const filtered = quizName
+    ? allResults.filter(r => (r.quiz === quizName))
+    : allResults.slice();
+
+  // First, apply the dropdown sort
+  let sortedData = sortResults(filtered, sortMethod);
+
+  // If the user has sorted by clicking table columns, override that table’s order
+  let finalAll = sortedData;
+  if(usingManualSort.allResultsTable){
+    const col = globalCurrentSort.allResultsTable.col;
+    const dir = globalCurrentSort.allResultsTable.dir;
+    finalAll = sortTableData(filtered, col, dir);
+  }
+
+  // "Recently Completed" = last 1 hour => filter from finalAll
+  let finalRecent = finalAll.filter(r => (Date.now() - r._endTimestamp) <= 3600_000);
+  if(usingManualSort.recentTable){
+    const col = globalCurrentSort.recentTable.col;
+    const dir = globalCurrentSort.recentTable.dir;
+    let recentFiltered = finalAll.filter(r => (Date.now() - r._endTimestamp) <= 3600_000);
+    finalRecent = sortTableData(recentFiltered, col, dir);
+  }
+
+  renderTable("recentTable", finalRecent);
+  renderTable("allResultsTable", finalAll);
+}
+
+/* Dropdown sorts: "latest", "highestScore", "name" */
+function sortResults(dataArr, method){
+  const arr = [...dataArr];
+  switch(method){
+    case "latest":
+      // sort desc by _endTimestamp
+      arr.sort((a,b)=> b._endTimestamp - a._endTimestamp);
+      break;
+    case "highestScore":
+      arr.sort((a,b)=> {
+        const ascore = unifyScore(a);
+        const bscore = unifyScore(b);
+        return bscore - ascore;
+      });
+      break;
+    case "name":
+      arr.sort((a,b)=> {
+        const an = (a.name || "").toLowerCase();
+        const bn = (b.name || "").toLowerCase();
+        return an.localeCompare(bn);
+      });
+      break;
+  }
+  return arr;
+}
+
+/* Manual column sorts */
+function sortTableData(dataArr, col, dir){
+  const arr = [...dataArr];
+  arr.sort((a,b)=>{
+    let valA, valB;
+    switch(col){
       case "name":
-        arr.sort((a,b) => {
-          const an = (a.name||"").toLowerCase();
-          const bn = (b.name||"").toLowerCase();
-          return an.localeCompare(bn);
-        });
-        break;
-    }
-    return arr;
-  }
-  
-  /* Manual column sorts */
-  function sortTableData(dataArr, tableId, col, dir) {
-    const arr = [...dataArr];
-    arr.sort((a,b) => {
-      let valA, valB;
-      if(col === "name"){
         valA = (a.name||"").toLowerCase();
         valB = (b.name||"").toLowerCase();
-      } else if(col === "quiz"){
+        break;
+      case "quiz":
         valA = (a.quiz||"").toLowerCase();
         valB = (b.quiz||"").toLowerCase();
-      } else if(col === "started"){
+        break;
+      case "started":
         valA = a._startTimestamp;
         valB = b._startTimestamp;
-      } else if(col === "ended"){
+        break;
+      case "ended":
         valA = a._endTimestamp;
         valB = b._endTimestamp;
-      } else if(col === "score"){
-        valA = parseInt(a.score||0);
-        valB = parseInt(b.score||0);
-      } else if(col === "progress"){
-        let ratioA = (a.questionsCompleted||0)/(a.totalQuestions||1);
-        let ratioB = (b.questionsCompleted||0)/(b.totalQuestions||1);
-        valA = ratioA;
-        valB = ratioB;
-      } else if(col === "date"){
-        // date is from start or end?
-        // we'll just compare whichever is nonzero
-        valA = a._startTimestamp || a._endTimestamp;
-        valB = b._startTimestamp || b._endTimestamp;
-      } else {
-        // # or unknown
+        break;
+      case "score":
+        valA = unifyScore(a);
+        valB = unifyScore(b);
+        break;
+      case "progress":
+        valA = ratio(a);
+        valB = ratio(b);
+        break;
+      case "date":
+        // we can use the start or end, we’ll just pick end for consistency
+        valA = a._endTimestamp || a._startTimestamp;
+        valB = b._endTimestamp || b._startTimestamp;
+        break;
+      default:
         valA = "";
         valB = "";
-      }
-      if(typeof valA === "string" && typeof valB === "string"){
-        return valA.localeCompare(valB);
-      }
-      return valA - valB;
-    });
-    if(dir === "desc") arr.reverse();
-    return arr;
-  }
-  
-  /* Render table rows */
-  function renderTable(tableId, dataArr) {
-    const tbody = document.querySelector(`#${tableId} tbody`);
-    tbody.innerHTML = "";
-    dataArr.forEach((item, idx) => {
-      const tr = document.createElement("tr");
-  
-      // finalScore overrides score if present
-      const displayedScore = (typeof item.finalScore !== "undefined")
-        ? item.finalScore
-        : (item.score || 0);
-  
-      // day/night from lastAnswered
-      const dayN = dayOrNight(item._endTimeISO);
-      const icon = (dayN === "night") ? "🌙" : "☀️";
-      const cellClass = (dayN === "night") ? "nightCell" : "dayCell";
-  
-      // progress
-      const prog = `${item.questionsCompleted||0}/${item.totalQuestions||0}`;
-  
-      // local date from timeStarted or lastAnswered
-      const dateISO = item.timeStarted || item._endTimeISO;
-      const formattedDate = formatLocalDate(dateISO);
-  
-      // create cells
-      // #, name, quiz, started, ended, score, progress, date, day/night, delete
-      let rowCells = [
-        createCell(idx+1, false, "ranking"),
-        createCell(item.name||""),
-        createCell(item.quiz||""),
-        createCell(formatLocalAmPm(item.timeStarted)),
-        createCell(formatLocalAmPm(item._endTimeISO)),
-        createCell(displayedScore),
-        createCell(prog),
-        createCell(formattedDate),
-        createCell(`<span class="${cellClass}">${icon}</span>`, true),
-        createDeleteCell(item._key)
-      ];
-      rowCells.forEach(td => tr.appendChild(td));
-  
-      tbody.appendChild(tr);
-    });
-  }
-  
-  /* Helper to create a cell (optionally HTML) */
-  function createCell(content, useHtml=false, extraClass="") {
-    const td = document.createElement("td");
-    if(extraClass) td.classList.add(extraClass);
-    if(useHtml) td.innerHTML = content;
-    else td.textContent = (content !== undefined ? content : "");
-    return td;
-  }
-  
-  /* Helper to create the Delete cell */
-  function createDeleteCell(key) {
-    const td = document.createElement("td");
-    const delBtn = document.createElement("button");
-    delBtn.className = "delete-btn";
-    delBtn.textContent = "Del";
-    delBtn.title = "Delete this entry";
-    delBtn.addEventListener("click", () => {
-      if(confirm("Are you sure you want to delete this entry?")){
-        db.ref(`ai-results/ai1/${key}`).remove()
-          .then(()=> console.log("Deleted record", key))
-          .catch(err => console.error("Error:", err));
-      }
-    });
-    td.appendChild(delBtn);
-    return td;
-  }
-  
-  /* Day or Night by hour */
-  function dayOrNight(isoString){
-    if(!isoString) return "day";
-    const d = new Date(isoString);
-    if(isNaN(d.getTime())) return "day";
-    const h = d.getHours();
-    return (h >= 18 || h < 6) ? "night" : "day";
-  }
-  
-  /* Format "22 Jan 25" */
-  function formatLocalDate(isoString){
-    if(!isoString) return "";
-    const d = new Date(isoString);
-    if(isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2,"0");
-    const months = ["Jan","Feb","Mar","Apr","May","Jun",
-                    "Jul","Aug","Sep","Oct","Nov","Dec"];
-    const mon = months[d.getMonth()];
-    const yr = String(d.getFullYear()).slice(-2);
-    return `${day} ${mon} ${yr}`;
-  }
-  
-  /* Format "2:05 pm" */
-  function formatLocalAmPm(isoString) {
-    if(!isoString) return "";
-    const d = new Date(isoString);
-    if(isNaN(d.getTime())) return "";
-    let hh = d.getHours();
-    const mm = d.getMinutes();
-    const ampm = hh >= 12 ? "pm" : "am";
-    hh = hh % 12 || 12;
-    const hhStr = (hh<10 ? "0"+hh : hh);
-    const mmStr = (mm<10 ? "0"+mm : mm);
-    return `${hhStr}:${mmStr} ${ampm}`;
-  }
-  
-  /* Show quick "Updating..." indicator */
-  function showUpdatingIndicator(){
-    const indicator = document.getElementById("liveStatus");
-    indicator.style.opacity = 1;
-    clearTimeout(updatingTimeout);
-    updatingTimeout = setTimeout(() => {
-      indicator.style.opacity = 0;
-    }, 1000);
-  }
-  
-  /* CSV Export */
-  document.getElementById("exportCsvBtn").addEventListener("click", () => {
-    const sortMethod = document.getElementById("sortSelect").value;
-    const quizName = document.getElementById("quizFilter").value;
-    const filtered = quizName
-      ? allResults.filter(r => r.quiz === quizName)
-      : [...allResults];
-    const finalArr = sortResults(filtered, sortMethod); 
-    // if user manually sorted columns, we *could* also apply that logic, but 
-    // for CSV we'll just do the dropdown sort.
-  
-    // Build CSV row objects
-    const csvData = finalArr.map(r => ({
-      name: r.name || "",
-      quiz: r.quiz || "",
-      score: (typeof r.finalScore !== "undefined") ? r.finalScore : (r.score || 0),
-      questionsCompleted: r.questionsCompleted || 0,
-      totalQuestions: r.totalQuestions || 0,
-      timeStarted: r.timeStarted || "",
-      lastAnswered: r.lastAnswered || ""
-    }));
-    const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download","ai1-scoreboard.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  });
-  
-  /* Fullscreen toggles for each table */
-  const recentBlock = document.getElementById("recentBlock");
-  const enterFullscreenBtn = document.getElementById("enterFullscreenBtn");
-  const closeFullscreenBtn = document.getElementById("closeFullscreenBtn");
-  
-  enterFullscreenBtn.addEventListener("click", () => {
-    recentBlock.classList.add("fullscreen");
-    enterFullscreenBtn.style.display = "none";
-    closeFullscreenBtn.style.display = "block";
-  });
-  
-  closeFullscreenBtn.addEventListener("click", () => {
-    recentBlock.classList.remove("fullscreen");
-    closeFullscreenBtn.style.display = "none";
-    enterFullscreenBtn.style.display = "block";
-  });
-  
-  const allResultsBlock = document.getElementById("allResultsBlock");
-  const enterFullscreenAllBtn = document.getElementById("enterFullscreenAllBtn");
-  const closeFullscreenAllBtn = document.getElementById("closeFullscreenAllBtn");
-  
-  enterFullscreenAllBtn.addEventListener("click", () => {
-    allResultsBlock.classList.add("fullscreen");
-    enterFullscreenAllBtn.style.display = "none";
-    closeFullscreenAllBtn.style.display = "block";
-  });
-  
-  closeFullscreenAllBtn.addEventListener("click", () => {
-    allResultsBlock.classList.remove("fullscreen");
-    closeFullscreenAllBtn.style.display = "none";
-    enterFullscreenAllBtn.style.display = "block";
-  });
-  
-  /* Clickable column headers => sort each table */
-  document.querySelectorAll("th.sortable-header").forEach(th => {
-    th.addEventListener("click", () => {
-      const tableId = th.getAttribute("data-table"); // "recentTable" or "allResultsTable"
-      const col = th.getAttribute("data-col");
-      const currentCol = globalCurrentSort[tableId].col;
-      const currentDir = globalCurrentSort[tableId].dir;
-      let newDir = "asc";
-      if(col === currentCol && currentDir === "asc") {
-        newDir = "desc";
-      } else if(col === currentCol && currentDir === "desc") {
-        newDir = "asc";
-      }
-      globalCurrentSort[tableId].col = col;
-      globalCurrentSort[tableId].dir = newDir;
-      usingManualSort[tableId] = true;
-      refreshDisplays();
-      updateSortIcons(tableId, col, newDir);
-    });
-  });
-  
-  /* Indicate which column/direction is active */
-  function updateSortIcons(tableId, col, dir) {
-    document.querySelectorAll(`th.sortable-header[data-table="${tableId}"]`)
-      .forEach(th => th.classList.remove("sort-asc","sort-desc"));
-    const header = document.querySelector(`th.sortable-header[data-table="${tableId}"][data-col="${col}"]`);
-    if(header) {
-      header.classList.add( (dir==="asc") ? "sort-asc" : "sort-desc" );
+        break;
     }
-  }
-  
-  /* On DOM load, highlight the default sort icons */
-  document.addEventListener("DOMContentLoaded", () => {
-    updateSortIcons("recentTable", globalCurrentSort.recentTable.col, globalCurrentSort.recentTable.dir);
-    updateSortIcons("allResultsTable", globalCurrentSort.allResultsTable.col, globalCurrentSort.allResultsTable.dir);
+    if(typeof valA === "string" && typeof valB === "string"){
+      return valA.localeCompare(valB);
+    }
+    return valA - valB;
   });
+  if(dir === "desc") arr.reverse();
+  return arr;
+}
+
+/* unifyScore: handle finalScore, finalWPM, or score */
+function unifyScore(r){
+  if(typeof r.finalScore !== "undefined") return parseFloat(r.finalScore) || 0;
+  if(typeof r.finalWPM   !== "undefined") return parseFloat(r.finalWPM)   || 0;
+  return parseFloat(r.score) || 0;
+}
+function ratio(r){
+  const totalQ = r.totalQuestions || 0;
+  const doneQ  = r.questionsCompleted || 0;
+  return (totalQ>0) ? (doneQ/totalQ) : 0;
+}
+
+/* Render a table’s rows */
+function renderTable(tableId, dataArr){
+  const tbody = document.querySelector(`#${tableId} tbody`);
+  tbody.innerHTML = "";
+  dataArr.forEach((item, idx)=>{
+    const tr = document.createElement("tr");
+    
+    // unify displayed score
+    let displayedScore = unifyScore(item);
+    
+    // Format score to 2 decimal places for ai2 quiz
+    if(item.quiz === "ai2") {
+      // Ensure that displayedScore is a number before formatting
+      if(!isNaN(displayedScore)) {
+        displayedScore = displayedScore.toFixed(2);
+      } else {
+        displayedScore = "N/A";
+      }
+    } else {
+      // If you prefer to display without decimal for other quizzes
+      if(!isNaN(displayedScore)) {
+        displayedScore = Math.round(displayedScore);
+      } else {
+        displayedScore = "N/A";
+      }
+    }
+
+    // day/night from endTime
+    const dayN = dayOrNight(item._endTimeISO);
+    const icon = (dayN === "night") ? "🌙" : "☀️";
+    const cellClass = (dayN === "night") ? "nightCell" : "dayCell";
+
+    // progress
+    const totalQ = item.totalQuestions || 0;
+    const compQ  = item.questionsCompleted || 0;
+    const prog   = `${compQ}/${totalQ}`;
+
+    // local date from _endTimeISO or _startTimeISO
+    const dateISO = item._endTimeISO || item._startTimeISO;
+    const formattedDate = formatLocalDate(dateISO);
+
+    // row cells: (#, name, quiz, started, ended, score, progress, date, day/night, delete)
+    let rowCells = [
+      createCell(idx+1, false, "ranking"),
+      createCell(item.name || ""),
+      createCell(item.quiz || ""),
+      createCell(formatLocalAmPm(item._startTimeISO)),
+      createCell(formatLocalAmPm(item._endTimeISO)),
+      createCell(displayedScore),
+      createCell(prog),
+      createCell(formattedDate),
+      createCell(`<span class="${cellClass}">${icon}</span>`, true),
+      createDeleteCell(item._quiz, item._key)
+    ];
+    rowCells.forEach(td => tr.appendChild(td));
+    tbody.appendChild(tr);
+  });
+}
+
+/* create a cell (optional HTML) */
+function createCell(content, useHtml=false, extraClass=""){
+  const td = document.createElement("td");
+  if(extraClass) td.classList.add(extraClass);
+  if(useHtml) td.innerHTML = content;
+  else td.textContent = (content !== undefined ? content : "");
+  return td;
+}
+
+/* createDeleteCell: removes from the correct quiz path */
+function createDeleteCell(quiz, key){
+  const td = document.createElement("td");
+  const delBtn = document.createElement("button");
+  delBtn.className = "delete-btn";
+  delBtn.textContent = "Del";
+  delBtn.title = "Delete this entry";
+  delBtn.addEventListener("click", ()=>{
+    if(confirm("Are you sure you want to delete this entry?")){
+      db.ref(`ai-results/${quiz}/${key}`).remove()
+        .then(()=> console.log("Deleted record", key, "from", quiz))
+        .catch(err => console.error("Error:", err));
+    }
+  });
+  td.appendChild(delBtn);
+  return td;
+}
+
+/* dayOrNight by local hour */
+function dayOrNight(isoString){
+  if(!isoString) return "day";
+  const d = new Date(isoString);
+  if(isNaN(d.getTime())) return "day";
+  const h = d.getHours();
+  return (h >= 18 || h < 6) ? "night" : "day";
+}
+
+/* formatLocalDate => "22 Jan 25" */
+function formatLocalDate(isoString){
+  if(!isoString) return "";
+  const d = new Date(isoString);
+  if(isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2,"0");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const mon = months[d.getMonth()];
+  const yr = String(d.getFullYear()).slice(-2);
+  return `${day} ${mon} ${yr}`;
+}
+
+/* formatLocalAmPm => "02:05 pm" */
+function formatLocalAmPm(isoString){
+  if(!isoString) return "";
+  const d = new Date(isoString);
+  if(isNaN(d.getTime())) return "";
+  let hh = d.getHours();
+  const mm = d.getMinutes();
+  const ampm = hh >= 12 ? "pm" : "am";
+  hh = hh % 12 || 12;
+  const hhStr = hh<10 ? "0"+hh : hh;
+  const mmStr = mm<10 ? "0"+mm : mm;
+  return `${hhStr}:${mmStr} ${ampm}`;
+}
+
+/* -----------------------------------------
+   4) CSV Export
+----------------------------------------- */
+document.getElementById("exportCsvBtn").addEventListener("click", () => {
+  const sortMethod = document.getElementById("sortSelect").value;
+  const quizName = document.getElementById("quizFilter").value;
+  // filter
+  const filtered = quizName
+    ? allResults.filter(r => r.quiz === quizName)
+    : [...allResults];
+  // sort by dropdown
+  const finalArr = sortResults(filtered, sortMethod);
+
+  // Build CSV rows
+  const csvData = finalArr.map(r => ({
+    name: r.name || "",
+    quiz: r.quiz || "",
+    score: unifyScore(r),
+    questionsCompleted: r.questionsCompleted || 0,
+    totalQuestions: r.totalQuestions || 0,
+    startTime: r._startTimeISO || "",
+    endTime: r._endTimeISO || ""
+  }));
+  const csv = Papa.unparse(csvData);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download","ai_scoreboard.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+});
+
+/* -----------------------------------------
+   5) Fullscreen Toggles
+----------------------------------------- */
+const recentBlock = document.getElementById("recentBlock");
+const enterFullscreenBtn = document.getElementById("enterFullscreenBtn");
+const closeFullscreenBtn = document.getElementById("closeFullscreenBtn");
+enterFullscreenBtn.addEventListener("click", () => {
+  recentBlock.classList.add("fullscreen");
+  enterFullscreenBtn.style.display = "none";
+  closeFullscreenBtn.style.display = "block";
+});
+closeFullscreenBtn.addEventListener("click", () => {
+  recentBlock.classList.remove("fullscreen");
+  closeFullscreenBtn.style.display = "none";
+  enterFullscreenBtn.style.display = "block";
+});
+
+const allResultsBlock = document.getElementById("allResultsBlock");
+const enterFullscreenAllBtn = document.getElementById("enterFullscreenAllBtn");
+const closeFullscreenAllBtn = document.getElementById("closeFullscreenAllBtn");
+enterFullscreenAllBtn.addEventListener("click", () => {
+  allResultsBlock.classList.add("fullscreen");
+  enterFullscreenAllBtn.style.display = "none";
+  closeFullscreenAllBtn.style.display = "block";
+});
+closeFullscreenAllBtn.addEventListener("click", () => {
+  allResultsBlock.classList.remove("fullscreen");
+  closeFullscreenAllBtn.style.display = "none";
+  enterFullscreenAllBtn.style.display = "block";
+});
+
+/* -----------------------------------------
+   6) Clickable column headers => manual sort
+----------------------------------------- */
+document.querySelectorAll("th.sortable-header").forEach(th => {
+  th.addEventListener("click", () => {
+    const tableId = th.getAttribute("data-table"); // "recentTable" or "allResultsTable"
+    const col = th.getAttribute("data-col");
+    const currentCol = globalCurrentSort[tableId].col;
+    const currentDir = globalCurrentSort[tableId].dir;
+
+    let newDir = "asc";
+    if(col === currentCol && currentDir === "asc") {
+      newDir = "desc";
+    } else if(col === currentCol && currentDir === "desc") {
+      newDir = "asc";
+    }
+    globalCurrentSort[tableId].col = col;
+    globalCurrentSort[tableId].dir = newDir;
+
+    usingManualSort[tableId] = true;
+    refreshDisplays();
+    updateSortIcons(tableId, col, newDir);
+  });
+});
+
+/* Show which column/direction is active */
+function updateSortIcons(tableId, col, dir){
+  document.querySelectorAll(`th.sortable-header[data-table="${tableId}"]`)
+    .forEach(th => th.classList.remove("sort-asc","sort-desc"));
+  const header = document.querySelector(`th.sortable-header[data-table="${tableId}"][data-col="${col}"]`);
+  if(header) {
+    header.classList.add(dir==="asc" ? "sort-asc" : "sort-desc");
+  }
+}
+
+/* Initialize icons after DOM load */
+document.addEventListener("DOMContentLoaded", () => {
+  updateSortIcons("recentTable", globalCurrentSort.recentTable.col, globalCurrentSort.recentTable.dir);
+  updateSortIcons("allResultsTable", globalCurrentSort.allResultsTable.col, globalCurrentSort.allResultsTable.dir);
+});
 </script>
 </body>
 </html>
